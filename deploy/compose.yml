@@ -1,0 +1,152 @@
+# Dokploy compose (PRD §4 kuralları):
+#   - container_name YOK (Dokploy kendi adlandırmasını yapar)
+#   - domain/TLS Dokploy UI'dan bağlanır, elle Traefik label'ı yazılmaz
+#   - kalıcı veriler ../files/ altına bind mount
+#   - db, dokploy-network'e ASLA girmez (dışa kapalı)
+services:
+  core:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    # replicas: 1 ŞART (PRD §4): zamanlayıcı iki kopyada her rutini iki kez
+    # tetikler. Compose varsayılanı 1'dir — bilinçli olarak artırılMAZ.
+    deploy:
+      replicas: 1
+    expose:
+      # 8080 — özel API (bot yönetimi, onaylar, runner WS, SSE). API_TOKEN
+      # ile bearer korumalı olduğu için Dokploy'dan domaine BAĞLANABİLİR;
+      # Mac uygulamasının bağlandığı yüzey budur.
+      # 8081 — public: yalnız Google OAuth uçları (kimlik doğrulaması OAuth
+      # akışının kendisindedir, bearer olamaz — Google buraya yönlendirir).
+      # MCP yüzeyi (8082) BİLİNÇLİ olarak expose EDİLMEZ: konteyner içinde
+      # 127.0.0.1'de dinler, motor oraya aynı makineden bağlanır (K15).
+      - "8080"
+      - "8081"
+    # HOST'A PORT YAYIMLANMAZ (ports: yok). Traefik konteynere dokploy-network
+    # üzerinden ulaşıyor, yayımlamaya gerek yok. Yayımlamanın bedeli gerçek:
+    # host portu global bir kaynak, aynı makinede ikinci bir kurulum (ya da
+    # portu tutan başka bir şey) deploy'u "Bind for 127.0.0.1:8080 failed:
+    # port is already allocated" ile düşürüyor — kap hiç açılmıyor.
+    #
+    # Domain kurmadan erişmek gerekirse (teşhis, tünel), kalıcı olarak
+    # buraya satır eklemek yerine tek seferlik:
+    #   docker compose -f deploy/compose.yml run --rm --service-ports core
+    # ya da doğrudan konteyner IP'sine SSH tüneli.
+    environment:
+      DATABASE_URL: postgres://openassist:${POSTGRES_PASSWORD:?Dokploy > Environment sekmesinde POSTGRES_PASSWORD tanimlanmali}@db:5432/openassist?sslmode=disable
+      # ZORUNLU. Ozel API'yi (bot yonetimi, onaylar, runner WS) yalniz bu
+      # belirtec korur; domaine bagli oldugu icin token'siz acilis her seyi
+      # internete acardi. Kurulum basina bir kez uretilir, Mac uygulamasina
+      # Ayarlar > Baglantilar'dan girilir: openssl rand -hex 32
+      # NOT: :? mesajinda ": " KULLANMA — tirnaksiz YAML skalerinde iki nokta
+      # + bosluk eslesme ayiracidir ve dosya hic ayristirilamaz.
+      API_TOKEN: ${API_TOKEN:?Dokploy > Environment sekmesinde API_TOKEN tanimlanmali; uretmek icin openssl rand -hex 32}
+      MIGRATE_ON_START: "true"
+      LOG_LEVEL: info
+      LOG_FORMAT: json   # log toplayıcılar için yapılandırılmış çıktı (Faz 9)
+      DATA_DIR: /data
+      # Motor kimliği (K15): pi'ye BİLİNÇLİ verilir — ortam sıfırdan kurulur,
+      # konteynerde anahtarlık yoktur.
+      #
+      # SAĞLAYICILAR ARTIK VERİTABANINDA: Mac'te Ayarlar > Modeller. Anahtar
+      # orada mühürlenir (MASTER_KEY), models.json'a yalnız $OA_PI_KEY_<ID>
+      # referansı yazılır — düz metin diske düşmez. Yeni model eklemek ya da
+      # anahtar değiştirmek için bu dosyaya dokunmak ve servisi yeniden
+      # başlatmak gerekmez.
+      #
+      #   PI_PROVIDER_*: yalnız İLK AÇILIŞ TOHUMU — sağlayıcı tablosu bomboşken
+      #                  bir kez içeri alınır, sonra ekrandaki kayıt esastır.
+      #   PI_ENV:        pi'nin yerleşik sağlayıcı anahtarları
+      #                  ("ANTHROPIC_API_KEY=...,OPENAI_API_KEY=..." biçiminde)
+      PI_PROVIDER_ID: ${PI_PROVIDER_ID:-}
+      PI_PROVIDER_BASE_URL: ${PI_PROVIDER_BASE_URL:-}
+      PI_PROVIDER_API: ${PI_PROVIDER_API:-}
+      PI_PROVIDER_KEY: ${PI_PROVIDER_KEY:-}
+      PI_MODELS: ${PI_MODELS:-}
+      PI_DEFAULT_MODEL: ${PI_DEFAULT_MODEL:-}
+      PI_THINKING: ${PI_THINKING:-}
+      PI_ENV: ${PI_ENV:-}
+      # MASTER_KEY iki yerde kullanılır: Google konektör token'ları ve
+      # sağlayıcı API anahtarları (Modeller ekranı). Tanımsızsa ekrandan
+      # anahtar yazılamaz — düz metin saklamaktansa özellik kapanır.
+      # Faz 4 — Google konektörü (hepsi Dokploy env'inden gelir; boşsa kapalı):
+      #   MASTER_KEY: openssl rand -hex 32 (mühürleme; kaybedilirse
+      #   konektörler yeniden bağlanır, sağlayıcı anahtarları yeniden girilir)
+      #   PUBLIC_BASE_URL: Dokploy'da :8081'e bağlanan domain (redirect URI kökü)
+      MASTER_KEY: ${MASTER_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8081}
+      # Faz 5 — Telegram kanalı (K16; opsiyonel, boşsa kapalı).
+      #   TELEGRAM_ALLOWED_CHAT_IDS zorunlu: virgülle ayrık chat_id listesi;
+      #   izinli olmayan herkese sessiz ret. Gizlilik bedeli: Bot API uçtan
+      #   uca şifreli DEĞİLDİR — Telegram'a giden içerik oradan geçer.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_ALLOWED_CHAT_IDS: ${TELEGRAM_ALLOWED_CHAT_IDS:-}
+    volumes:
+      # DATA_DIR bütünüyle kalıcı: koşu çalışma alanları, olay tee NDJSON,
+      # ekler — deploy'da kaybolmaz (§6).
+      #
+      # İKİ ÜST (../../): göreli bind yolu COMPOSE DOSYASININ dizinine göre
+      # çözülür, çalışma dizinine göre değil. Dosya code/deploy/ altında
+      # olduğundan "../files" = code/files olurdu — Dokploy her deploy'da
+      # code/'u yeniden klonluyor, yani veri her seferinde silinirdi.
+      # "../../files" ise code/'un kardeşi <app>/files: Dokploy'un kalıcı
+      # dizini, klonlama ona dokunmaz.
+      - ../../files/data:/data
+    healthcheck:
+      # İmajda curl'e gerek yok — binary kendini yoklar (cmd/core healthcheck)
+      test: ["CMD", "core", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 60s   # deploy'da koşu drain süresi (PRD §6)
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - dokploy-network
+      - internal
+
+  db:
+    # ANA SÜRÜM: sadece etiketi büyütmek YETMEZ. Veri dizini biçimi ana
+    # sürümle değişir; ../files/pgdata dolu bir sunucuda 18'e çıkmak
+    # "database files are incompatible with server" ile kapanır. Yükseltme
+    # yolu: kabı durdur → pg_dump (ya da pg_upgrade) → yeni dizine restore.
+    # 18'e SIFIR veriyle geçildi (2026-08-15): 14 göç + entegrasyon/e2e
+    # paketi 18.6'da tam geçiyor.
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: openassist
+      POSTGRES_USER: openassist
+      # ZORUNLU (:? ile). Tanimsizken compose bunu bos dizeye cevirirdi;
+      # postgres imaji bos parolayla ACILMAZ ("You must specify
+      # POSTGRES_PASSWORD to a non-empty value"), db healthcheck'i hic
+      # gecmez ve deploy "dependency failed to start: db is unhealthy"
+      # diye duserdi — gercek sebepten uc kat uzak bir mesaj. Simdi hicbir
+      # kap acilmadan, sebebi soyleyerek durur.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Dokploy > Environment sekmesinde POSTGRES_PASSWORD tanimlanmali}
+    volumes:
+      # HEDEF /var/lib/postgresql — /data DEĞİL. Postgres 18 imajı veriyi
+      # ana sürüme özel dizine koyar (PGDATA=/var/lib/postgresql/18/docker,
+      # VOLUME=/var/lib/postgresql); 17'de ikisi de .../data idi. Eski yola
+      # mount edilince imaj, dizin BOŞ olsa bile açılmayı reddediyor:
+      # "there appears to be PostgreSQL data in: /var/lib/postgresql/data
+      # (unused mount/volume)" → kap exit 1 → healthcheck geçmez → deploy
+      # "dependency failed to start: db is unhealthy" der.
+      - ../../files/pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openassist -d openassist"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+networks:
+  dokploy-network:
+    external: true
+  internal:

@@ -1,0 +1,36 @@
+OpenAssist
+Copyright 2026 Esmworks
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The names "OpenAssist" and the OpenAssist logo are trademarks of Esmworks and are
+not licensed under the Apache License. Forks and redistributions must use a
+different name and logo.
+
+--------------------------------------------------------------------------------
+Third-party components
+--------------------------------------------------------------------------------
+
+Pi (https://github.com/earendil-works/pi)
+  The agent engine (@earendil-works/pi-coding-agent), installed from npm in the
+  container image (deploy/Dockerfile) and run as a separate process; not
+  vendored in this repository. MIT License.
+
+Go modules linked into the server binary (see go.mod and go.sum):
+  github.com/caarlos0/env/v11        MIT License
+  github.com/coder/websocket         ISC License
+  github.com/google/uuid             BSD 3-Clause License
+  github.com/jackc/pgx/v5            MIT License
+  github.com/jackc/pgpassfile        MIT License
+  github.com/jackc/pgservicefile     MIT License
+  github.com/jackc/puddle/v2         MIT License
+  github.com/mfridman/interpolate    MIT License
+  github.com/pressly/goose/v3        MIT License
+  github.com/robfig/cron/v3          MIT License
+  github.com/sethvargo/go-retry      Apache License 2.0
+  go.uber.org/multierr               MIT License
+  golang.org/x/oauth2                BSD 3-Clause License
+  golang.org/x/sync                  BSD 3-Clause License
+  golang.org/x/text                  BSD 3-Clause License
+
+The macOS app (mac/) has no third-party package dependencies.

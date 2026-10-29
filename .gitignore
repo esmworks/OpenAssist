@@ -1,0 +1,31 @@
+# derleme çıktıları
+bin/
+coverage.out
+
+# npm bağımlılıkları (pi köprüsü) — package-lock commit edilir, modüller edilmez
+internal/engine/pi/bridge/node_modules/
+
+# yerel koşu verisi (NDJSON olay teesi, DataDir varsayılanı)
+data/
+
+# gizli değerler — asla commit edilmez
+.env
+*.env.local
+
+# macOS
+.DS_Store
+
+# Xcode (mac/ Faz 6'da gelecek)
+mac/build/
+mac/DerivedData/
+*.xcuserstate
+
+# Swift paket derleme çıktısı
+mac/.build/
+
+# ZCode oturum verisi
+.zcode/
+
+# iç planlama notları — yalnız yerelde tutulur, depoya girmez
+prd.md
+to-do.md

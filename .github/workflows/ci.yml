@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: openassist
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: sqlc üretimi güncel mi
+        uses: sqlc-dev/setup-sqlc@v4
+        with:
+          # Yereldeki (brew) sürümle aynı tutulmalı — üretilen kod başlığı
+          # sürüm içeriyor, uyuşmazlık tazelik kontrolünü kırar.
+          sqlc-version: "1.31.1"
+      - run: sqlc generate && git diff --exit-code -- internal/store/db
+      - run: go build ./...
+      - run: go vet ./...
+      - name: birim testleri
+        run: go test ./...
+      - name: entegrasyon testleri (gerçek Postgres)
+        # -p 1: paketler tek tek koşar — hepsi aynı koşu kuyruğunu paylaşır,
+        # paralelde bir paketin worker'ı diğerinin koşusunu kapar.
+        run: go test -tags integration -p 1 -timeout 300s ./...
+        env:
+          DATABASE_URL: postgres://postgres:test@localhost:5432/openassist?sslmode=disable
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v8
